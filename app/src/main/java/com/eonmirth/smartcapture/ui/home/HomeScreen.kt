@@ -35,11 +35,6 @@ import com.eonmirth.smartcapture.model.UserPreferences
 import com.eonmirth.smartcapture.recording.ConsentHelper
 import com.eonmirth.smartcapture.recording.ProjectionHolder
 
-/**
- * Home / Record screen — Phase 3.
- * Record button requests MediaProjection consent and starts the foreground service.
- * No encoder yet — session is active only as projection + notification.
- */
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
@@ -61,17 +56,18 @@ fun HomeScreen() {
 
     val isSessionActive = recordingState == RecordingState.RECORDING ||
         recordingState == RecordingState.STARTING ||
-        recordingState == RecordingState.REQUESTING_CONSENT
+        recordingState == RecordingState.REQUESTING_CONSENT ||
+        recordingState == RecordingState.FINALIZING
 
     val statusText = when (recordingState) {
-        RecordingState.IDLE -> "Ready • Consent required to start"
+        RecordingState.IDLE -> "Ready • Tap Record to capture"
         RecordingState.REQUESTING_CONSENT -> "Waiting for system consent…"
-        RecordingState.STARTING -> "Starting session…"
-        RecordingState.RECORDING -> "Session active (no file yet — Phase 4 adds encoder)"
+        RecordingState.STARTING -> "Starting encoder…"
+        RecordingState.RECORDING -> "Recording… (video only, no audio yet)"
         RecordingState.PAUSED_BY_USER -> "Paused by user"
         RecordingState.PAUSED_BY_SOURCE -> "Paused (source hidden)"
-        RecordingState.FINALIZING -> "Finalizing…"
-        RecordingState.SAVED -> "Saved"
+        RecordingState.FINALIZING -> "Saving MP4…"
+        RecordingState.SAVED -> "Saved to Movies/SmartCapture"
         RecordingState.ERROR -> "Error — session released"
     }
 
@@ -81,29 +77,20 @@ fun HomeScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text(text = stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = stringResource(R.string.capture_source),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Text(text = stringResource(R.string.capture_source), style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(text = modeLabel, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = if (prefs.captureMode == CaptureMode.SINGLE_APP && !capability.supportsSingleAppCapture)
                         "Not available on this OS — switch to Full screen in Settings"
-                    else
-                        "System picker confirms actual source",
+                    else "System picker confirms actual source",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -112,20 +99,11 @@ fun HomeScreen() {
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Profile: ${profile.displayName}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "Change in Settings",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(text = "Profile: ${profile.displayName}", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Change in Settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -134,34 +112,20 @@ fun HomeScreen() {
         if (isSessionActive && recordingState != RecordingState.REQUESTING_CONSENT) {
             Button(
                 onClick = { ConsentHelper.stopSession(context) },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .semantics { contentDescription = "Stop capture session" }
+                enabled = recordingState != RecordingState.FINALIZING,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth().height(56.dp).semantics { contentDescription = "Stop capture session" }
             ) {
-                Text("Stop", style = MaterialTheme.typography.titleMedium)
+                Text(if (recordingState == RecordingState.FINALIZING) "Saving…" else "Stop", style = MaterialTheme.typography.titleMedium)
             }
         } else {
             Button(
-                onClick = {
-                    if (consentLauncher != null) {
-                        ConsentHelper.requestConsent(context, consentLauncher)
-                    }
-                },
+                onClick = { if (consentLauncher != null) ConsentHelper.requestConsent(context, consentLauncher) },
                 enabled = consentLauncher != null && recordingState != RecordingState.REQUESTING_CONSENT,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .semantics { contentDescription = "Start capture — requests system consent" }
+                modifier = Modifier.fillMaxWidth().height(56.dp).semantics { contentDescription = "Start capture — requests system consent" }
             ) {
                 Text(
-                    text = if (recordingState == RecordingState.REQUESTING_CONSENT)
-                        "Waiting…"
-                    else
-                        stringResource(R.string.record_button),
+                    text = if (recordingState == RecordingState.REQUESTING_CONSENT) "Waiting…" else stringResource(R.string.record_button),
                     style = MaterialTheme.typography.titleMedium
                 )
             }
@@ -175,11 +139,7 @@ fun HomeScreen() {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = stringResource(R.string.recent_recordings),
-            style = MaterialTheme.typography.titleMedium
-        )
+        Text(text = stringResource(R.string.recent_recordings), style = MaterialTheme.typography.titleMedium)
         Text(
             text = stringResource(R.string.empty_library_hint),
             style = MaterialTheme.typography.bodyMedium,
