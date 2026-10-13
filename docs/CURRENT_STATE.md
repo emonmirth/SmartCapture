@@ -1,7 +1,7 @@
 # Current State — SmartCapture
 
 **Last updated:** 2026-10-13  
-**Phase:** 3 (MediaProjection consent spike) complete in code
+**Phase:** 4 (Encoder + MP4) complete in code
 
 ## Environment
 
@@ -10,38 +10,24 @@
 
 ## What exists now
 
-### Phase 0–2
-- UI shell, models, CapabilityProbe, DataStore preferences
+### Phase 0–3
+- UI, prefs, capability probe, MediaProjection consent, FGS
 
-### Phase 3 (new)
-- **Manifest**: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PROJECTION`, `POST_NOTIFICATIONS`
-- **RecordingService**: foreground service with `mediaProjection` type, ongoing notification + Stop action
-- **ProjectionHolder**: process-wide `StateFlow<RecordingState>` + active `MediaProjection` reference
-- **ConsentHelper**: system consent dialog via Activity Result API; grant → start service; deny/cancel → IDLE
-- **HomeScreen**: Record requests consent; Stop ends session; status reflects live state
-- **MainActivity**: registers consent launcher + notification permission (API 33+)
+### Phase 4 (new)
+- **VideoEncoder**: Surface-input H.264 (MediaCodec), MediaMuxer → MP4
+- **RecordingOutput**: temp file → MediaStore Movies/SmartCapture
+- **RecordingService**: VirtualDisplay + encoder; stop finalizes and publishes
+- Home status: Recording / Saving / Saved
+- Still **no audio** (Phase 7)
 
-### Explicit non-features (still)
-- No VirtualDisplay, no MediaCodec, no MP4 file
-- Session active means projection + notification only
-- Auto-pause / visibility policy not implemented (Phase 6)
-- Audio not implemented (Phase 7)
+### How to verify on device
 
-### Lifecycle guarantees in this phase
-- New consent for every session (no token reuse)
-- `MediaProjection.Callback.onStop` releases resources and returns to IDLE
-- Stop from notification or UI is idempotent
-- Service uses `START_NOT_STICKY` and clears notification on stop
+1. Record → grant consent → notification Recording…
+2. Use phone 10–30s → Stop
+3. Status → Saving → Saved
+4. Gallery / Files → Movies/SmartCapture → play MP4 (no audio expected)
+5. Deny consent → no file
 
-## How to verify on device
+## Next (Phase 5)
 
-1. Run app → tap Record → system consent dialog appears
-2. Deny → status returns to Ready
-3. Grant → foreground notification appears; status = Session active
-4. Tap Stop (UI or notification) → notification gone; status = Ready
-5. Grant again, then system stop / lock → onStop should clean up
-6. Confirm no MP4 is written (expected)
-
-## Next task (Phase 4)
-
-Connect capture surface to MediaCodec + MediaMuxer → playable MP4.
+State machine hardening + unit tests.

@@ -1,21 +1,12 @@
 # Session Log
 
-## 2026-10-13 — Phase 0 & 1 scaffold
+## 2026-10-13 — Phase 0–3
 
-- Project structure, Gradle, Compose shell, disabled Record button
-- Docs + .ai/RULES.md
-- Pushed to https://github.com/emonmirth/SmartCapture
+- UI shell, models, CapabilityProbe, DataStore, MediaProjection consent, FGS
 
-## 2026-10-13 — Phase 2 capability + preferences
+## 2026-10-13 — Phase 4 Encoder + MP4
 
-- Immutable models, CapabilityProbe, DataStore preferences
-- Settings UI with capability-aware options
-
-## 2026-10-13 — Phase 3 MediaProjection consent spike
-
-- Manifest: FGS + mediaProjection type + POST_NOTIFICATIONS
-- RecordingService with ongoing notification and Stop action
-- ProjectionHolder StateFlow + MediaProjection attach/detach
-- ConsentHelper: request → grant/deny → start/abort service
-- HomeScreen: live Record / Stop + status text
-- No encoder / VirtualDisplay yet
+- VideoEncoder: MediaCodec surface input + MediaMuxer
+- RecordingOutput: MediaStore publish under Movies/SmartCapture
+- RecordingService: VirtualDisplay + encoder pipeline, finalize on stop
+- Video only; no audio
