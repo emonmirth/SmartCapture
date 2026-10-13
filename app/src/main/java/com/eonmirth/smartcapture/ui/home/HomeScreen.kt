@@ -13,20 +13,45 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier.modifier
+import androidx.compose.ui.modifier.modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.eonmirth.smartcapture.R
+import com.eonmirth.smartcapture.capability.CapabilityProbe
+import com.eonmirth.smartcapture.data.PreferencesRepository
+import com.eonmirth.smartcapture.model.CaptureMode
+import com.eonmirth.smartcapture.model.QualityProfile
+import com.eonmirth.smartcapture.model.UserPreferences
 
 /**
- * Home / Record screen — Phase 1 shell only.
- * Record button is present but intentionally non-functional until Phase 3+.
+ * Home / Record screen — Phase 2.
+ * Shows live preference + capability info.
+ * Record button remains disabled until Phase 3+.
  */
 @Composable
 fun HomeScreen() {
+    val context = LocalContext.current
+    val repo = remember { PreferencesRepository(context) }
+    val prefs by repo.preferences.collectAsState(initial = UserPreferences())
+    val capability = remember { CapabilityProbe.probe(context) }
+
+    val profile = capability.supportedProfiles
+        .find { it.preset == prefs.qualityPreset }
+        ?: capability.supportedProfiles.firstOrNull()
+        ?: QualityProfile.BatterySaver
+
+    val modeLabel = when (prefs.captureMode) {
+        CaptureMode.SINGLE_APP -> stringResource(R.string.single_app)
+        CaptureMode.FULL_SCREEN -> stringResource(R.string.full_screen)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -38,7 +63,6 @@ fun HomeScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
-        // Capture source card (placeholder)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -52,19 +76,20 @@ fun HomeScreen() {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "${stringResource(R.string.single_app)} / ${stringResource(R.string.full_screen)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = modeLabel,
+                    style = MaterialTheme.typography.bodyLarge
                 )
                 Text(
-                    text = "System picker confirms actual source",
+                    text = if (prefs.captureMode == CaptureMode.SINGLE_APP && !capability.supportsSingleAppCapture)
+                        "Not available on this OS — switch to Full screen in Settings"
+                    else
+                        "System picker confirms actual source",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Profile card (placeholder)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -73,11 +98,11 @@ fun HomeScreen() {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Profile: ${stringResource(R.string.profile_balanced)}",
+                    text = "Profile: ${profile.displayName}",
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = "Edit (not yet available)",
+                    text = "Change in Settings",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -86,7 +111,6 @@ fun HomeScreen() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Record button — disabled until recording pipeline exists
         Button(
             onClick = { /* Phase 3+ will wire this */ },
             enabled = false,

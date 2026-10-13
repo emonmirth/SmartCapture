@@ -1,61 +1,41 @@
 # Current State — SmartCapture
 
 **Last updated:** 2026-10-13  
-**Phase:** 0–1 (Skeleton + UI shell) completed in code
+**Phase:** 2 (Capability model + DataStore) complete in code
 
 ## Environment
 
-- Host: Linux sandbox
-- Java: OpenJDK 21
-- Android SDK / emulator / sdkmanager: **not available in this environment**
-- Therefore: source + Gradle files are ready, but `assembleDebug` and device tests must be run on a machine with Android Studio / full SDK.
+- Host: Linux sandbox (no Android SDK / emulator)
+- Builds and device tests must be run on a machine with Android Studio
 
 ## What exists now
 
-### Docs
-- `docs/PRODUCT_SPEC.md` — product vision & MVP scope
-- `docs/ARCHITECTURE.md` — module layout & contracts
-- `docs/TEST_PLAN.md` — acceptance criteria & phase tests
-- `docs/CURRENT_STATE.md` — this file
-- `.ai/RULES.md` — AI engineering rules from master pack
+### Phase 0–1
+- Gradle project, Material 3 theme, bottom nav (Record / Library / Settings)
+- Honest disabled Record button
 
-### Build system
-- Root `settings.gradle.kts`, `build.gradle.kts`
-- `gradle/libs.versions.toml` (AGP 8.7.2, Kotlin 2.0.21, Compose BOM 2024.10.01)
-- `app/build.gradle.kts` (minSdk 26, target/compile 35, Compose enabled)
-- Gradle wrapper properties (8.9)
+### Phase 2 (new)
+- **Models** (`model/Models.kt`): `CaptureMode`, `QualityPreset`, `AudioOption`, `QualityProfile`, `DeviceCapability`, `RecordingState`, `UserPreferences`
+- **CapabilityProbe**: probes AVC encoder limits, single-app support (API 34+), hardware heuristic; never claims internal audio or 1080p60 blindly
+- **PreferencesRepository**: DataStore-backed local prefs (capture mode, quality, audio, auto-pause, floating controls)
+- **Settings screen**: live radio options; unsupported choices are disabled with explanations; device notes shown
+- **Home screen**: reflects selected mode + supported profile from prefs/capability
 
-### Application code (Phase 0–1)
-- `SmartCaptureApp` + `MainActivity`
-- Material 3 theme (Pixel-inspired blue, dynamic color support)
-- Bottom navigation: Record / Library / Settings
-- `HomeScreen` — capture source card, profile card, large Record button (**disabled**), status text, recent section
-- `LibraryScreen` — empty state
-- `SettingsScreen` — placeholder groups note
-- Strings, basic theme resources
-- Manifest with no recording permissions yet (added only when features land)
+### Explicit non-features
+- No MediaProjection, no encoder session, no recording
+- Internal audio marked unavailable until Phase 7 verifies it
+- Record button still disabled
 
-### Explicit non-features (honest UX)
-- Record button is disabled and labeled as not implemented
-- No MediaProjection, no encoder, no fake telemetry
-- No mock recordings
+## Next task (Phase 3)
 
-## Blockers / Limitations
+MediaProjection consent spike:
+- Request consent, foreground-service type, callbacks, cleanup
+- Test deny / cancel / system stop
+- Still no encoder
 
-1. Cannot compile or run APK inside this sandbox (no Android SDK).
-2. Launcher icons are temporary `@android:drawable` fallbacks — replace before release.
-3. Multi-module structure is prepared as directories only; currently single `:app` module for fastest first build.
+## How to verify Phase 2 on device
 
-## Next task (Phase 2)
-
-Create immutable models (`CaptureMode`, `RecordingState`, `QualityProfile`, `Capability`, etc.) and a simple capability probe stub. Persist preferences with DataStore. Still no recording.
-
-After that: Phase 3 MediaProjection consent spike.
-
-## How to build on a real machine
-
-1. Open the `smartcapture` folder in Android Studio (Ladybug / recent).
-2. Let it sync Gradle.
-3. Add proper adaptive launcher icons.
-4. Run on emulator or device (API 26+).
-5. Confirm navigation and disabled Record button.
+1. Open project in Android Studio, sync, run.
+2. Open Settings → change Capture source / Quality; unsupported options should be greyed out.
+3. Return to Record tab → profile label should match selection.
+4. Kill process and reopen → preferences should persist.

@@ -2,10 +2,15 @@
 
 ## 2026-10-13 — Phase 0 & 1 scaffold
 
-- Created project root and suggested module directories
-- Wrote PRODUCT_SPEC, ARCHITECTURE, TEST_PLAN, CURRENT_STATE, RULES
-- Added Gradle (single-module for now) + version catalog
-- Implemented Compose navigation shell + Material 3 theme
-- Home / Library / Settings screens with honest disabled Record button
-- No recording code, no permissions beyond defaults, no fake data
-- Environment limitation noted: no Android SDK here → build verification deferred to local machine
+- Project structure, Gradle, Compose shell, disabled Record button
+- Docs + .ai/RULES.md
+- Pushed to https://github.com/emonmirth/SmartCapture
+
+## 2026-10-13 — Phase 2 capability + preferences
+
+- Added immutable models (CaptureMode, QualityProfile, DeviceCapability, UserPreferences, …)
+- CapabilityProbe: MediaCodecList AVC probe, conservative max W/H/FPS, single-app gate on API 34+
+- PreferencesRepository via DataStore
+- Settings UI: selectable options, disabled unsupported presets with explanations, device notes
+- Home UI: shows live mode + profile from prefs
+- Still no recording / MediaProjection
