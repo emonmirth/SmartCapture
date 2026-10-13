@@ -1,9 +1,15 @@
 package com.eonmirth.smartcapture
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -16,33 +22,66 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier.modifier
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.eonmirth.smartcapture.recording.ConsentHelper
 import com.eonmirth.smartcapture.ui.home.HomeScreen
 import com.eonmirth.smartcapture.ui.library.LibraryScreen
 import com.eonmirth.smartcapture.ui.settings.SettingsScreen
 import com.eonmirth.smartcapture.ui.theme.SmartCaptureTheme
 
+/** Provides the screen-capture consent launcher to Compose. */
+val LocalConsentLauncher = compositionLocalOf<ActivityResultLauncher<Intent>?> { null }
+
 class MainActivity : ComponentActivity() {
+
+    private lateinit var consentLauncher: ActivityResultLauncher<Intent>
+    private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        consentLauncher = ConsentHelper.createLauncher(this) { }
+
+        notificationPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { }
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         enableEdgeToEdge()
         setContent {
             SmartCaptureTheme {
-                SmartCaptureAppScaffold()
+                CompositionLocalProvider(LocalConsentLauncher provides consentLauncher) {
+                    SmartCaptureAppScaffold()
+                }
             }
         }
     }
 }
 
-private sealed class Dest(val route: String, val labelRes: Int, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private sealed class Dest(
+    val route: String,
+    val labelRes: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
     data object Record : Dest("record", R.string.nav_record, Icons.Default.Videocam)
     data object Library : Dest("library", R.string.nav_library, Icons.Default.List)
     data object Settings : Dest("settings", R.string.nav_settings, Icons.Default.Settings)
