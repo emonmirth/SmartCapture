@@ -1,0 +1,1 @@
+Note: Add real launcher icons (ic_launcher / ic_launcher_round) before release. Using adaptive icon or vector is preferred.
