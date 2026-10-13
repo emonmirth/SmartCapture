@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions will be added only when the corresponding feature is implemented -->
-    <!-- FOREGROUND_SERVICE + FOREGROUND_SERVICE_MEDIA_PROJECTION later -->
-    <!-- RECORD_AUDIO later (mic) -->
-    <!-- POST_NOTIFICATIONS (Android 13+) later -->
+    <!-- Phase 3: MediaProjection foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <!-- POST_NOTIFICATIONS for Android 13+ notification visibility -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".SmartCaptureApp"
@@ -14,6 +15,7 @@
         android:roundIcon="@android:drawable/ic_menu_camera"
         android:supportsRtl="true"
         android:theme="@style/Theme.SmartCapture">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -24,5 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- MediaProjection requires a foreground service of type mediaProjection -->
+        <service
+            android:name=".recording.RecordingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>
