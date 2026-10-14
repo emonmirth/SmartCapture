@@ -30,7 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Phase 4–5: MediaProjection + VirtualDisplay + VideoEncoder → MP4; stop via requestStop(). */
+/** Phase 4–6: capture pipeline + VisibilityPolicy auto-pause on screen off. */
 class RecordingService : Service() {
 
     private var mediaProjection: MediaProjection? = null
@@ -41,6 +41,7 @@ class RecordingService : Service() {
     private var encodeWidth = 1280
     private var encodeHeight = 720
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var visibilityPolicy: VisibilityPolicy? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,7 +73,6 @@ class RecordingService : Service() {
 
     private suspend fun startCapture(resultCode: Int, data: Intent) {
         RecorderController.tryTransitionSync(RecordingState.STARTING)
-
         val profile = resolveProfile()
         encodeWidth = profile.width
         encodeHeight = profile.height
@@ -103,7 +103,6 @@ class RecordingService : Service() {
 
         val out = RecordingOutput.createTempFile(this)
         tempFile = out
-
         val enc = try {
             VideoEncoder(encodeWidth, encodeHeight, profile.frameRate, bitrate, out).also { it.start() }
         } catch (e: Exception) {
@@ -112,8 +111,7 @@ class RecordingService : Service() {
             return
         }
         encoder = enc
-        val surface = enc.surface
-        if (surface == null) {
+        val surface = enc.surface ?: run {
             failAndStop()
             return
         }
@@ -132,6 +130,29 @@ class RecordingService : Service() {
 
         RecorderController.tryTransitionSync(RecordingState.RECORDING)
         updateNotification("Recording ${profile.displayName}")
+        startVisibilityPolicy()
+    }
+
+    private fun startVisibilityPolicy() {
+        visibilityPolicy?.stop()
+        var enabled = true
+        val policy = VisibilityPolicy(
+            context = this,
+            autoPauseEnabled = { enabled },
+            onAutoPause = { updateNotification("Paused (screen off)") },
+            onAutoResume = { updateNotification("Recording…") }
+        )
+        policy.start()
+        visibilityPolicy = policy
+        scope.launch {
+            try {
+                enabled = PreferencesRepository(this@RecordingService).preferences.first().autoPauseEnabled
+                if (!enabled) {
+                    policy.stop()
+                    visibilityPolicy = null
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     private suspend fun resolveProfile(): QualityProfile {
@@ -163,6 +184,8 @@ class RecordingService : Service() {
             RecorderController.StopRequestResult.REJECTED -> return
             RecorderController.StopRequestResult.STOPPING -> { }
         }
+        visibilityPolicy?.stop()
+        visibilityPolicy = null
         updateNotification("Saving…")
 
         try { virtualDisplay?.release() } catch (_: Exception) { }
@@ -174,8 +197,7 @@ class RecordingService : Service() {
         var published = false
         if (save) {
             tempFile?.let { file ->
-                val uri = RecordingOutput.publishToMediaStore(this, file, encodeWidth, encodeHeight)
-                published = uri != null
+                published = RecordingOutput.publishToMediaStore(this, file, encodeWidth, encodeHeight) != null
             }
         } else {
             tempFile?.delete()
@@ -193,6 +215,8 @@ class RecordingService : Service() {
 
     private fun failAndStop() {
         scope.launch {
+            visibilityPolicy?.stop()
+            visibilityPolicy = null
             try { virtualDisplay?.release() } catch (_: Exception) { }
             virtualDisplay = null
             try { encoder?.stop() } catch (_: Exception) { }
@@ -216,6 +240,8 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        visibilityPolicy?.stop()
+        visibilityPolicy = null
         scope.cancel()
         try { virtualDisplay?.release() } catch (_: Exception) { }
         try { encoder?.stop() } catch (_: Exception) { }
