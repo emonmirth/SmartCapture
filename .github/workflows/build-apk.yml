@@ -18,12 +18,13 @@ jobs:
           java-version: "17"
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v3.2.2
 
-      - name: Install SDK packages
+      - name: Accept licenses and install platform
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
-          yes | sdkmanager --licenses || true
+          set -e
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -31,9 +32,12 @@ jobs:
           gradle-version: "8.9"
 
       - name: Build debug APK
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          gradle assembleDebug --stacktrace
+          gradle assembleDebug --stacktrace --info 2>&1 | tail -100
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
