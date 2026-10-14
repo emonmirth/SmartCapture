@@ -34,7 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
-/** Phase 4–7: video + optional mic audio via CaptureMuxer. */
+/** Phase 4–8: capture + mic + visibility + notification/floating controls. */
 class RecordingService : Service() {
 
     private var mediaProjection: MediaProjection? = null
@@ -49,6 +49,7 @@ class RecordingService : Service() {
     private var encodeHeight = 720
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var visibilityPolicy: VisibilityPolicy? = null
+    private var floatingControls: FloatingControls? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,6 +73,12 @@ class RecordingService : Service() {
                 scope.launch { startCapture(resultCode, data) }
             }
             ACTION_STOP -> scope.launch { stopCaptureAndSelf(save = true) }
+            ACTION_PAUSE -> {
+                if (RecorderController.requestPauseByUser()) updateNotification("Paused")
+            }
+            ACTION_RESUME -> {
+                if (RecorderController.requestResumeFromUserPause()) updateNotification("Recording…")
+            }
             else -> stopSelf()
         }
         return START_NOT_STICKY
@@ -89,14 +96,11 @@ class RecordingService : Service() {
             mgr.getMediaProjection(resultCode, data)
         } catch (e: Exception) {
             Log.e(TAG, "getMediaProjection failed", e)
-            failAndStop()
-            return
+            failAndStop(); return
         } ?: run { failAndStop(); return }
 
         val callback = object : MediaProjection.Callback() {
-            override fun onStop() {
-                scope.launch { stopCaptureAndSelf(save = true) }
-            }
+            override fun onStop() { scope.launch { stopCaptureAndSelf(save = true) } }
         }
         projection.registerCallback(callback, null)
         projectionCallback = callback
@@ -111,11 +115,6 @@ class RecordingService : Service() {
             val prefs = PreferencesRepository(this).preferences.first()
             wantMic = prefs.audioOption == AudioOption.MICROPHONE ||
                 prefs.audioOption == AudioOption.MIC_AND_INTERNAL
-            if (prefs.audioOption == AudioOption.INTERNAL_PLAYBACK ||
-                prefs.audioOption == AudioOption.MIC_AND_INTERNAL
-            ) {
-                Log.i(TAG, "Internal playback not captured in Phase 7")
-            }
         } catch (_: Exception) { }
 
         val hasMicPermission = ContextCompat.checkSelfPermission(
@@ -130,8 +129,7 @@ class RecordingService : Service() {
             VideoEncoder(encodeWidth, encodeHeight, profile.frameRate, bitrate, muxer).also { it.start() }
         } catch (e: Exception) {
             Log.e(TAG, "Encoder start failed", e)
-            failAndStop()
-            return
+            failAndStop(); return
         }
         encoder = enc
         val surface = enc.surface ?: run { failAndStop(); return }
@@ -139,10 +137,7 @@ class RecordingService : Service() {
         if (includeMic) {
             val mic = MicAudioEncoder(muxer)
             if (mic.start()) micEncoder = mic
-            else {
-                includeMic = false
-                muxer.forceStartIfNeeded()
-            }
+            else { includeMic = false; muxer.forceStartIfNeeded() }
         }
 
         val density = resources.displayMetrics.densityDpi
@@ -153,8 +148,7 @@ class RecordingService : Service() {
             )
         } catch (e: Exception) {
             Log.e(TAG, "VirtualDisplay failed", e)
-            failAndStop()
-            return
+            failAndStop(); return
         }
 
         RecorderController.tryTransitionSync(RecordingState.RECORDING)
@@ -163,9 +157,24 @@ class RecordingService : Service() {
             else "Recording ${profile.displayName}"
         )
         startVisibilityPolicy()
+        maybeShowFloating()
         scope.launch {
             kotlinx.coroutines.delay(2500)
             captureMuxer?.forceStartIfNeeded()
+        }
+    }
+
+    private fun maybeShowFloating() {
+        scope.launch {
+            try {
+                val prefs = PreferencesRepository(this@RecordingService).preferences.first()
+                if (!prefs.showFloatingControls) return@launch
+                val fc = FloatingControls(this@RecordingService) {
+                    scope.launch { stopCaptureAndSelf(save = true) }
+                }
+                fc.show()
+                floatingControls = fc
+            } catch (_: Exception) { }
         }
     }
 
@@ -183,10 +192,7 @@ class RecordingService : Service() {
         scope.launch {
             try {
                 enabled = PreferencesRepository(this@RecordingService).preferences.first().autoPauseEnabled
-                if (!enabled) {
-                    policy.stop()
-                    visibilityPolicy = null
-                }
+                if (!enabled) { policy.stop(); visibilityPolicy = null }
             } catch (_: Exception) { }
         }
     }
@@ -198,9 +204,7 @@ class RecordingService : Service() {
             cap.supportedProfiles.find { it.preset == prefs.qualityPreset }
                 ?: cap.supportedProfiles.firstOrNull()
                 ?: QualityProfile.BatterySaver
-        } catch (_: Exception) {
-            QualityProfile.BatterySaver
-        }
+        } catch (_: Exception) { QualityProfile.BatterySaver }
     }
 
     private suspend fun stopCaptureAndSelf(save: Boolean) {
@@ -215,8 +219,8 @@ class RecordingService : Service() {
             RecorderController.StopRequestResult.REJECTED -> return
             RecorderController.StopRequestResult.STOPPING -> { }
         }
-        visibilityPolicy?.stop()
-        visibilityPolicy = null
+        visibilityPolicy?.stop(); visibilityPolicy = null
+        floatingControls?.hide(); floatingControls = null
         updateNotification("Saving…")
 
         try { virtualDisplay?.release() } catch (_: Exception) { }
@@ -249,6 +253,7 @@ class RecordingService : Service() {
     private fun failAndStop() {
         scope.launch {
             visibilityPolicy?.stop(); visibilityPolicy = null
+            floatingControls?.hide(); floatingControls = null
             try { virtualDisplay?.release() } catch (_: Exception) { }
             virtualDisplay = null
             try { micEncoder?.stop() } catch (_: Exception) { }
@@ -276,6 +281,7 @@ class RecordingService : Service() {
 
     override fun onDestroy() {
         visibilityPolicy?.stop(); visibilityPolicy = null
+        floatingControls?.hide(); floatingControls = null
         scope.cancel()
         try { virtualDisplay?.release() } catch (_: Exception) { }
         try { micEncoder?.stop() } catch (_: Exception) { }
@@ -310,23 +316,38 @@ class RecordingService : Service() {
     }
 
     private fun buildNotification(content: String): Notification {
-        val openIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val openIntent = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), flags)
         val stopIntent = PendingIntent.getService(
-            this, 1, Intent(this, RecordingService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            this, 1, Intent(this, RecordingService::class.java).setAction(ACTION_STOP), flags
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val pauseIntent = PendingIntent.getService(
+            this, 2, Intent(this, RecordingService::class.java).setAction(ACTION_PAUSE), flags
+        )
+        val resumeIntent = PendingIntent.getService(
+            this, 3, Intent(this, RecordingService::class.java).setAction(ACTION_RESUME), flags
+        )
+        val state = RecorderController.currentState()
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(openIntent)
-            .addAction(0, "Stop", stopIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .build()
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        when (state) {
+            RecordingState.PAUSED_BY_USER, RecordingState.PAUSED_BY_SOURCE -> {
+                builder.addAction(0, "Resume", resumeIntent)
+                builder.addAction(0, "Stop", stopIntent)
+            }
+            RecordingState.RECORDING, RecordingState.STARTING -> {
+                builder.addAction(0, "Pause", pauseIntent)
+                builder.addAction(0, "Stop", stopIntent)
+            }
+            else -> builder.addAction(0, "Stop", stopIntent)
+        }
+        return builder.build()
     }
 
     companion object {
@@ -335,6 +356,8 @@ class RecordingService : Service() {
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.eonmirth.smartcapture.action.START"
         const val ACTION_STOP = "com.eonmirth.smartcapture.action.STOP"
+        const val ACTION_PAUSE = "com.eonmirth.smartcapture.action.PAUSE"
+        const val ACTION_RESUME = "com.eonmirth.smartcapture.action.RESUME"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
 
