@@ -1,44 +1,29 @@
 # Current State — SmartCapture
 
 **Last updated:** 2026-10-14  
-**Phase:** 5 (State machine) complete in code
+**Phase:** 6 (Visibility policy) complete in code
 
-## Environment
+## What exists
 
-- Host: Linux sandbox (no Android SDK)
-- Unit tests: `./gradlew test` on a machine with SDK/JDK
-- Device APK: `./gradlew assembleDebug`
+### Phase 0–5
+- UI, prefs, capability, consent, FGS, encoder→MP4, state machine + unit tests
 
-## What exists now
+### Phase 6 (new)
+- **VisibilityPolicy**: screen on/off + process lifecycle
+- Auto-pause → PAUSED_BY_SOURCE only on **screen off** when Settings toggle is on
+- Auto-resume when screen turns on
+- Honest non-claims: no multi-window/PiP/source-app visibility without restricted APIs
+- Settings copy updated; wired into RecordingService
 
-### Phase 0–4
-- UI, prefs, capability probe, MediaProjection consent, FGS
-- VirtualDisplay + MediaCodec + MediaMuxer → MP4 (video only)
-
-### Phase 5 (new)
-- **RecorderController**: serialized legal transitions, idempotent `requestStop()`, forceIdle for system onStop
-- **ProjectionHolder**: facade over RecorderController (backward compatible)
-- **ConsentHelper / RecordingService**: stop path uses `requestStop()`
-- **Unit tests**: `RecorderControllerTest` (happy path, deny, pause/resume, idempotent stop, illegal jumps)
-
-### State machine rules
-```
-IDLE → REQUESTING_CONSENT → STARTING → RECORDING
-  ⇄ PAUSED_BY_USER | PAUSED_BY_SOURCE
-  → FINALIZING → SAVED → IDLE
-  → ERROR → IDLE
-```
-- Illegal transitions rejected
-- System revoke uses forceIdle
-- requestStop is idempotent
+## Limits
+- Cannot know if the *captured* third-party app is hidden
+- Process background alone does not pause
+- Accessibility is not used
 
 ## Verify
+1. Enable Auto-pause → Record → screen off → Paused
+2. Screen on → resumes
+3. Disable auto-pause → screen off does not pause
 
-1. `./gradlew test` — all RecorderControllerTest pass
-2. Device: Record → Stop twice quickly should not crash
-3. Deny consent → IDLE
-4. MP4 still saves as in Phase 4
-
-## Next (Phase 6)
-
-App visibility policy / auto-pause when signal reliable; honest fallback otherwise.
+## Next (Phase 7)
+Audio: mic first; internal only where proven.
