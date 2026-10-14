@@ -1,10 +1,15 @@
 # Current State — SmartCapture
 
-**Phase:** 9 (Library UI) complete in code
+**Phase:** 0–9 complete in code + CI APK build
 
-## Phase 9
-- RecordingLibrary: MediaStore SmartCapture folder
-- LibraryScreen: list, play, share, delete
-- READ_MEDIA_VIDEO / READ_EXTERNAL_STORAGE
+## APK download
+1. Open https://github.com/emonmirth/SmartCapture/actions
+2. Open latest **Build Debug APK** run (green check)
+3. Artifacts → **SmartCapture-debug** → download zip → install APK
 
-## Next: Phase 10 performance notes
+Or: Actions → Run workflow (workflow_dispatch)
+
+Package id (debug): `com.eonmirth.smartcapture.debug`
+
+## Phase 10
+Performance/thermal notes — after device testing.
