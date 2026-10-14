@@ -11,7 +11,6 @@ import com.eonmirth.smartcapture.model.RecordingState
 
 /**
  * Handles the system MediaProjection consent dialog.
- * Phase 5: transitions go through [RecorderController].
  */
 object ConsentHelper {
 
@@ -48,6 +47,11 @@ object ConsentHelper {
         }
         val mgr = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         launcher.launch(mgr.createScreenCaptureIntent())
+    }
+
+    /** Alias used by HomeScreen. */
+    fun launchConsent(context: Context, launcher: ActivityResultLauncher<Intent>) {
+        requestConsent(context, launcher)
     }
 
     fun stopSession(context: Context) {
