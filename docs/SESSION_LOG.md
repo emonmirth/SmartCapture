@@ -1,12 +1,12 @@
 # Session Log
 
-## 2026-10-13 — Phase 0–3
+## 2026-10-13 — Phase 0–4
 
-- UI shell, models, CapabilityProbe, DataStore, MediaProjection consent, FGS
+- UI, models, CapabilityProbe, DataStore, MediaProjection, FGS, VideoEncoder, MediaStore MP4
 
-## 2026-10-13 — Phase 4 Encoder + MP4
+## 2026-10-14 — Phase 5 state machine
 
-- VideoEncoder: MediaCodec surface input + MediaMuxer
-- RecordingOutput: MediaStore publish under Movies/SmartCapture
-- RecordingService: VirtualDisplay + encoder pipeline, finalize on stop
-- Video only; no audio
+- RecorderController with legal transition table + requestStop/forceIdle
+- ProjectionHolder facade
+- ConsentHelper + RecordingService wired to requestStop
+- RecorderControllerTest unit tests

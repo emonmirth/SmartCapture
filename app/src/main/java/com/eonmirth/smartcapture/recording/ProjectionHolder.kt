@@ -2,46 +2,40 @@ package com.eonmirth.smartcapture.recording
 
 import android.media.projection.MediaProjection
 import com.eonmirth.smartcapture.model.RecordingState
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Process-wide holder for the active MediaProjection and UI state.
- * Phase 3: projection only — no virtual display / encoder yet.
- *
- * Rules:
- * - One projection session per consent
- * - System onStop always wins
- * - stop() must be idempotent (handled by service)
+ * Compatibility facade over [RecorderController].
+ * Existing UI/service code can keep calling ProjectionHolder;
+ * all transitions go through the Phase 5 state machine.
  */
 object ProjectionHolder {
 
-    private val _state = MutableStateFlow(RecordingState.IDLE)
-    val state: StateFlow<RecordingState> = _state.asStateFlow()
+    val state: StateFlow<RecordingState>
+        get() = RecorderController.state
 
-    @Volatile
-    private var projection: MediaProjection? = null
-
-    fun currentProjection(): MediaProjection? = projection
+    fun currentProjection(): MediaProjection? = RecorderController.currentProjection()
 
     fun attach(p: MediaProjection) {
-        projection = p
+        RecorderController.attachProjection(p)
     }
 
     fun detach() {
-        projection = null
+        RecorderController.detachProjection()
     }
 
+    /**
+     * Prefer [RecorderController.tryTransitionSync] for new code.
+     * This keeps legacy callers working with legality checks.
+     */
     fun updateState(newState: RecordingState) {
-        _state.value = newState
+        val applied = RecorderController.tryTransitionSync(newState)
+        if (!applied) {
+            if (newState == RecordingState.IDLE) {
+                RecorderController.forceIdle("legacy updateState IDLE")
+            }
+        }
     }
 
-    fun isActive(): Boolean {
-        val s = _state.value
-        return s == RecordingState.RECORDING ||
-            s == RecordingState.PAUSED_BY_USER ||
-            s == RecordingState.PAUSED_BY_SOURCE ||
-            s == RecordingState.STARTING
-    }
+    fun isActive(): Boolean = RecorderController.isSessionActive()
 }
