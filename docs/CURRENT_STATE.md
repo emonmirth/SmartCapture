@@ -1,10 +1,10 @@
 # Current State — SmartCapture
 
-**Phase:** 8 (Notification + floating controls) complete in code
+**Phase:** 9 (Library UI) complete in code
 
-## Phase 8
-- Notification: Pause / Resume / Stop
-- Optional floating Stop (SYSTEM_ALERT_WINDOW)
-- Settings toggle + honest permission note
+## Phase 9
+- RecordingLibrary: MediaStore SmartCapture folder
+- LibraryScreen: list, play, share, delete
+- READ_MEDIA_VIDEO / READ_EXTERNAL_STORAGE
 
-## Next: Phase 9 Library UI
+## Next: Phase 10 performance notes
