@@ -23,7 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.modifier.modifier
+import androidx.compose.ui.Modifier.modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -50,18 +50,14 @@ fun SettingsScreen() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
 
         SettingsSection(title = "Capture source") {
             CaptureModeOption(
                 label = "Single app",
                 description = if (capability.supportsSingleAppCapture)
                     "System picker; only the selected app is intended to be captured"
-                else
-                    "Requires Android 14+. Not available on this device.",
+                else "Requires Android 14+. Not available on this device.",
                 selected = prefs.captureMode == CaptureMode.SINGLE_APP,
                 enabled = capability.supportsSingleAppCapture,
                 onSelect = { scope.launch { repo.setCaptureMode(CaptureMode.SINGLE_APP) } }
@@ -86,9 +82,7 @@ fun SettingsScreen() {
                     else "Not offered — device limit ~${capability.maxWidth}x${capability.maxHeight}@${capability.maxFrameRate}",
                     selected = prefs.qualityPreset == preset,
                     enabled = supported,
-                    onSelect = {
-                        if (supported) scope.launch { repo.setQualityPreset(preset) }
-                    }
+                    onSelect = { if (supported) scope.launch { repo.setQualityPreset(preset) } }
                 )
             }
         }
@@ -98,8 +92,7 @@ fun SettingsScreen() {
                 val enabled = when (option) {
                     AudioOption.NONE -> true
                     AudioOption.MICROPHONE -> capability.supportsMicrophone
-                    AudioOption.INTERNAL_PLAYBACK,
-                    AudioOption.MIC_AND_INTERNAL -> capability.supportsInternalAudio
+                    AudioOption.INTERNAL_PLAYBACK, AudioOption.MIC_AND_INTERNAL -> capability.supportsInternalAudio
                 }
                 val desc = when (option) {
                     AudioOption.NONE -> "No audio track"
@@ -108,30 +101,25 @@ fun SettingsScreen() {
                     AudioOption.MIC_AND_INTERNAL -> "Mic + internal — not yet verified"
                 }
                 CaptureModeOption(
-                    label = option.name.replace('_', ' ').lowercase()
-                        .replaceFirstChar { it.uppercase() },
+                    label = option.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
                     description = desc,
                     selected = prefs.audioOption == option,
                     enabled = enabled,
-                    onSelect = {
-                        if (enabled) scope.launch { repo.setAudioOption(option) }
-                    }
+                    onSelect = { if (enabled) scope.launch { repo.setAudioOption(option) } }
                 )
             }
         }
 
         SettingsSection(title = "Automation") {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Auto-pause when source hidden", style = MaterialTheme.typography.bodyLarge)
+                    Text("Auto-pause on screen off", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Only when visibility signal is reliable (tested later)",
+                        "Pauses when the screen turns off. Does not detect other apps in multi-window/PiP.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -158,7 +146,7 @@ fun SettingsScreen() {
 
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Recording pipeline is not implemented yet (Phase 3+).",
+            text = "Video capture is implemented. Audio is Phase 7.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -166,15 +154,10 @@ fun SettingsScreen() {
 }
 
 @Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable () -> Unit
-) {
+private fun SettingsSection(title: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = title, style = MaterialTheme.typography.titleMedium)
@@ -193,34 +176,17 @@ private fun CaptureModeOption(
     onSelect: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(
-                selected = selected,
-                enabled = enabled,
-                onClick = onSelect,
-                role = Role.RadioButton
-            )
-            .padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, onClick = onSelect, role = Role.RadioButton).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RadioButton(
-            selected = selected,
-            onClick = null,
-            enabled = enabled
-        )
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
         Column(modifier = Modifier.padding(start = 8.dp)) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
             )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
