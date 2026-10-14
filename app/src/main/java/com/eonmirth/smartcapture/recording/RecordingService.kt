@@ -30,10 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
-/**
- * Foreground service: MediaProjection + VirtualDisplay + VideoEncoder → MP4.
- * Phase 4: video only.
- */
+/** Phase 4–5: MediaProjection + VirtualDisplay + VideoEncoder → MP4; stop via requestStop(). */
 class RecordingService : Service() {
 
     private var mediaProjection: MediaProjection? = null
@@ -59,23 +56,22 @@ class RecordingService : Service() {
                 }
                 if (data == null) {
                     Log.e(TAG, "Missing result data")
-                    ProjectionHolder.updateState(RecordingState.ERROR)
+                    RecorderController.tryTransitionSync(RecordingState.ERROR)
+                    RecorderController.forceIdle("missing data")
                     stopSelf()
                     return START_NOT_STICKY
                 }
                 startAsForeground()
                 scope.launch { startCapture(resultCode, data) }
             }
-            ACTION_STOP -> {
-                scope.launch { stopCaptureAndSelf(save = true) }
-            }
+            ACTION_STOP -> scope.launch { stopCaptureAndSelf(save = true) }
             else -> stopSelf()
         }
         return START_NOT_STICKY
     }
 
     private suspend fun startCapture(resultCode: Int, data: Intent) {
-        ProjectionHolder.updateState(RecordingState.STARTING)
+        RecorderController.tryTransitionSync(RecordingState.STARTING)
 
         val profile = resolveProfile()
         encodeWidth = profile.width
@@ -96,7 +92,7 @@ class RecordingService : Service() {
 
         val callback = object : MediaProjection.Callback() {
             override fun onStop() {
-                Log.i(TAG, "MediaProjection.onStop")
+                Log.i(TAG, "MediaProjection.onStop — system wins")
                 scope.launch { stopCaptureAndSelf(save = true) }
             }
         }
@@ -109,13 +105,7 @@ class RecordingService : Service() {
         tempFile = out
 
         val enc = try {
-            VideoEncoder(
-                width = encodeWidth,
-                height = encodeHeight,
-                frameRate = profile.frameRate,
-                bitrate = bitrate,
-                outputFile = out
-            ).also { it.start() }
+            VideoEncoder(encodeWidth, encodeHeight, profile.frameRate, bitrate, out).also { it.start() }
         } catch (e: Exception) {
             Log.e(TAG, "Encoder start failed", e)
             failAndStop()
@@ -124,7 +114,6 @@ class RecordingService : Service() {
         encoder = enc
         val surface = enc.surface
         if (surface == null) {
-            Log.e(TAG, "No input surface")
             failAndStop()
             return
         }
@@ -132,14 +121,8 @@ class RecordingService : Service() {
         val density = resources.displayMetrics.densityDpi
         virtualDisplay = try {
             projection.createVirtualDisplay(
-                "SmartCapture",
-                encodeWidth,
-                encodeHeight,
-                density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                surface,
-                null,
-                null
+                "SmartCapture", encodeWidth, encodeHeight, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, surface, null, null
             )
         } catch (e: Exception) {
             Log.e(TAG, "VirtualDisplay failed", e)
@@ -147,9 +130,8 @@ class RecordingService : Service() {
             return
         }
 
-        ProjectionHolder.updateState(RecordingState.RECORDING)
+        RecorderController.tryTransitionSync(RecordingState.RECORDING)
         updateNotification("Recording ${profile.displayName}")
-        Log.i(TAG, "Capture started ${encodeWidth}x${encodeHeight}@${profile.frameRate}")
     }
 
     private suspend fun resolveProfile(): QualityProfile {
@@ -165,46 +147,46 @@ class RecordingService : Service() {
     }
 
     private suspend fun stopCaptureAndSelf(save: Boolean) {
-        val state = ProjectionHolder.state.value
-        if (state == RecordingState.IDLE || state == RecordingState.FINALIZING || state == RecordingState.SAVED) {
-            if (state == RecordingState.IDLE) {
+        val stopResult = RecorderController.requestStop()
+        when (stopResult) {
+            RecorderController.StopRequestResult.ALREADY_STOPPED -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
+                return
             }
-            return
+            RecorderController.StopRequestResult.ALREADY_STOPPING -> return
+            RecorderController.StopRequestResult.CANCELLED_CONSENT -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+            RecorderController.StopRequestResult.REJECTED -> return
+            RecorderController.StopRequestResult.STOPPING -> { }
         }
-
-        ProjectionHolder.updateState(RecordingState.FINALIZING)
         updateNotification("Saving…")
 
         try { virtualDisplay?.release() } catch (_: Exception) { }
         virtualDisplay = null
-
         try { encoder?.stop() } catch (e: Exception) { Log.e(TAG, "encoder.stop", e) }
         encoder = null
-
         releaseProjectionOnly()
 
         var published = false
         if (save) {
-            val file = tempFile
-            if (file != null) {
+            tempFile?.let { file ->
                 val uri = RecordingOutput.publishToMediaStore(this, file, encodeWidth, encodeHeight)
                 published = uri != null
-                if (published) Log.i(TAG, "Saved to MediaStore: $uri")
-                else Log.w(TAG, "Publish failed or empty file")
             }
         } else {
             tempFile?.delete()
         }
         tempFile = null
 
-        ProjectionHolder.updateState(if (published) RecordingState.SAVED else RecordingState.IDLE)
         if (published) {
+            RecorderController.tryTransitionSync(RecordingState.SAVED)
             kotlinx.coroutines.delay(800)
-            ProjectionHolder.updateState(RecordingState.IDLE)
         }
-
+        RecorderController.forceIdle("after stop")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -218,7 +200,8 @@ class RecordingService : Service() {
             tempFile?.delete()
             tempFile = null
             releaseProjectionOnly()
-            ProjectionHolder.updateState(RecordingState.ERROR)
+            RecorderController.tryTransitionSync(RecordingState.ERROR)
+            RecorderController.forceIdle("fail")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -256,9 +239,7 @@ class RecordingService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel(CHANNEL_ID, "Recording", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shows while a capture session is active"
-            }
+            val channel = NotificationChannel(CHANNEL_ID, "Recording", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
