@@ -8,142 +8,130 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier.modifier
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.eonmirth.smartcapture.LocalConsentLauncher
 import com.eonmirth.smartcapture.R
 import com.eonmirth.smartcapture.capability.CapabilityProbe
 import com.eonmirth.smartcapture.data.PreferencesRepository
-import com.eonmirth.smartcapture.model.CaptureMode
-import com.eonmirth.smartcapture.model.QualityProfile
 import com.eonmirth.smartcapture.model.RecordingState
-import com.eonmirth.smartcapture.model.UserPreferences
 import com.eonmirth.smartcapture.recording.ConsentHelper
 import com.eonmirth.smartcapture.recording.ProjectionHolder
+import com.eonmirth.smartcapture.recording.RecorderController
+import com.eonmirth.smartcapture.recording.RecordingService
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
-    val repo = remember { PreferencesRepository(context) }
-    val prefs by repo.preferences.collectAsState(initial = UserPreferences())
+    val scope = rememberCoroutineScope()
+    val state by ProjectionHolder.state.collectAsState()
+    val prefsRepo = remember { PreferencesRepository(context) }
+    val prefs by prefsRepo.preferences.collectAsState(
+        initial = com.eonmirth.smartcapture.model.UserPreferences()
+    )
     val capability = remember { CapabilityProbe.probe(context) }
-    val recordingState by ProjectionHolder.state.collectAsState()
     val consentLauncher = LocalConsentLauncher.current
 
-    val profile = capability.supportedProfiles
-        .find { it.preset == prefs.qualityPreset }
-        ?: capability.supportedProfiles.firstOrNull()
-        ?: QualityProfile.BatterySaver
-
-    val modeLabel = when (prefs.captureMode) {
-        CaptureMode.SINGLE_APP -> stringResource(R.string.single_app)
-        CaptureMode.FULL_SCREEN -> stringResource(R.string.full_screen)
-    }
-
-    val isSessionActive = recordingState == RecordingState.RECORDING ||
-        recordingState == RecordingState.STARTING ||
-        recordingState == RecordingState.REQUESTING_CONSENT ||
-        recordingState == RecordingState.FINALIZING
-
-    val statusText = when (recordingState) {
-        RecordingState.IDLE -> "Ready • Tap Record to capture"
-        RecordingState.REQUESTING_CONSENT -> "Waiting for system consent…"
-        RecordingState.STARTING -> "Starting encoder…"
-        RecordingState.RECORDING -> "Recording… (video only, no audio yet)"
-        RecordingState.PAUSED_BY_USER -> "Paused by user"
-        RecordingState.PAUSED_BY_SOURCE -> "Paused (source hidden)"
-        RecordingState.FINALIZING -> "Saving MP4…"
-        RecordingState.SAVED -> "Saved to Movies/SmartCapture"
-        RecordingState.ERROR -> "Error — session released"
+    val statusText = when (state) {
+        RecordingState.IDLE -> stringResource(R.string.status_ready)
+        RecordingState.REQUESTING_CONSENT -> "Waiting for system permission…"
+        RecordingState.STARTING -> "Starting…"
+        RecordingState.RECORDING -> "Recording… (mic if enabled & permitted)"
+        RecordingState.PAUSED_BY_USER -> "Paused"
+        RecordingState.PAUSED_BY_SOURCE -> "Paused (screen off)"
+        RecordingState.FINALIZING -> "Saving…"
+        RecordingState.SAVED -> "Saved"
+        RecordingState.ERROR -> "Error — try again"
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
+        Text("SmartCapture", style = MaterialTheme.typography.headlineMedium)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = stringResource(R.string.capture_source), style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = modeLabel, style = MaterialTheme.typography.bodyLarge)
+            Column(Modifier = Modifier.padding(16.dp)) {
+                Text("Status", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = if (prefs.captureMode == CaptureMode.SINGLE_APP && !capability.supportsSingleAppCapture)
-                        "Not available on this OS — switch to Full screen in Settings"
-                    else "System picker confirms actual source",
+                    statusText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    "Profile: ${prefs.qualityPreset.name} · ${prefs.captureMode.name}",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+        }
+
+        when (state) {
+            RecordingState.IDLE, RecordingState.SAVED, RecordingState.ERROR -> {
+                Button(
+                    onClick = {
+                        val launcher = consentLauncher ?: return@Button
+                        if (RecorderController.tryTransitionSync(RecordingState.REQUESTING_CONSENT)) {
+                            ConsentHelper.launchConsent(context, launcher)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Text(stringResource(R.string.record_button))
+                }
+            }
+            RecordingState.RECORDING, RecordingState.PAUSED_BY_USER, RecordingState.PAUSED_BY_SOURCE -> {
+                OutlinedButton(
+                    onClick = { RecordingService.stop(context) },
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Text("Stop")
+                }
+            }
+            else -> {
+                Text(
+                    "Please wait…",
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Profile: ${profile.displayName}", style = MaterialTheme.typography.titleMedium)
-                Text(text = "Change in Settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-
         Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Saved under Movies/SmartCapture — open Library tab",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
-        if (isSessionActive && recordingState != RecordingState.REQUESTING_CONSENT) {
-            Button(
-                onClick = { ConsentHelper.stopSession(context) },
-                enabled = recordingState != RecordingState.FINALIZING,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                modifier = Modifier.fillMaxWidth().height(56.dp).semantics { contentDescription = "Stop capture session" }
-            ) {
-                Text(if (recordingState == RecordingState.FINALIZING) "Saving…" else "Stop", style = MaterialTheme.typography.titleMedium)
-            }
-        } else {
-            Button(
-                onClick = { if (consentLauncher != null) ConsentHelper.requestConsent(context, consentLauncher) },
-                enabled = consentLauncher != null && recordingState != RecordingState.REQUESTING_CONSENT,
-                modifier = Modifier.fillMaxWidth().height(56.dp).semantics { contentDescription = "Start capture — requests system consent" }
-            ) {
+        if (capability.notes.isNotEmpty()) {
+            capability.notes.take(2).forEach { note ->
                 Text(
-                    text = if (recordingState == RecordingState.REQUESTING_CONSENT) "Waiting…" else stringResource(R.string.record_button),
-                    style = MaterialTheme.typography.titleMedium
+                    "• $note",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-
-        Text(
-            text = statusText,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(text = stringResource(R.string.recent_recordings), style = MaterialTheme.typography.titleMedium)
-        Text(
-            text = stringResource(R.string.empty_library_hint),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
