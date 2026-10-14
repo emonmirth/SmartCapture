@@ -44,10 +44,7 @@ fun SettingsScreen() {
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
@@ -96,9 +93,9 @@ fun SettingsScreen() {
                 }
                 val desc = when (option) {
                     AudioOption.NONE -> "No audio track"
-                    AudioOption.MICROPHONE -> "Record from microphone (permission required later)"
-                    AudioOption.INTERNAL_PLAYBACK -> "Internal playback — not yet verified on this device"
-                    AudioOption.MIC_AND_INTERNAL -> "Mic + internal — not yet verified"
+                    AudioOption.MICROPHONE -> "Microphone (requires permission)"
+                    AudioOption.INTERNAL_PLAYBACK -> "Internal audio not available this phase (many apps block it)"
+                    AudioOption.MIC_AND_INTERNAL -> "Mic only for now; internal not captured"
                 }
                 CaptureModeOption(
                     label = option.name.replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() },
@@ -129,6 +126,24 @@ fun SettingsScreen() {
                     onCheckedChange = { scope.launch { repo.setAutoPauseEnabled(it) } }
                 )
             }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Floating stop button", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Needs Display over other apps permission. Optional; notification controls always work.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = prefs.showFloatingControls,
+                    onCheckedChange = { scope.launch { repo.setShowFloatingControls(it) } }
+                )
+            }
         }
 
         if (capability.notes.isNotEmpty()) {
@@ -146,7 +161,7 @@ fun SettingsScreen() {
 
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Video capture is implemented. Audio is Phase 7.",
+            text = "Notification Pause/Stop always available. Floating control is optional.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -169,14 +184,12 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun CaptureModeOption(
-    label: String,
-    description: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onSelect: () -> Unit
+    label: String, description: String, selected: Boolean, enabled: Boolean, onSelect: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, onClick = onSelect, role = Role.RadioButton).padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().selectable(
+            selected = selected, enabled = enabled, onClick = onSelect, role = Role.RadioButton
+        ).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(selected = selected, onClick = null, enabled = enabled)
@@ -184,7 +197,8 @@ private fun CaptureModeOption(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                color = if (enabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
             )
             Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
