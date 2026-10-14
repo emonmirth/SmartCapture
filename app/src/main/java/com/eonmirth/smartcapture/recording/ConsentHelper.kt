@@ -11,9 +11,7 @@ import com.eonmirth.smartcapture.model.RecordingState
 
 /**
  * Handles the system MediaProjection consent dialog.
- * Phase 3: request → grant/deny/cancel → start or abort service.
- *
- * Every new session must request consent again. Do not reuse tokens.
+ * Phase 5: transitions go through [RecorderController].
  */
 object ConsentHelper {
 
@@ -25,28 +23,44 @@ object ConsentHelper {
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-                ProjectionHolder.updateState(RecordingState.STARTING)
+                RecorderController.tryTransitionSync(RecordingState.STARTING)
                 RecordingService.start(activity, result.resultCode, result.data!!)
                 onResult(true)
             } else {
-                ProjectionHolder.updateState(RecordingState.IDLE)
+                RecorderController.tryTransitionSync(RecordingState.IDLE)
                 onResult(false)
             }
         }
     }
 
     fun requestConsent(context: Context, launcher: ActivityResultLauncher<Intent>) {
-        if (ProjectionHolder.isActive()) {
-            RecordingService.stop(context)
+        if (RecorderController.isSessionActive()) {
+            val result = RecorderController.requestStop()
+            if (result == RecorderController.StopRequestResult.STOPPING ||
+                result == RecorderController.StopRequestResult.ALREADY_STOPPING
+            ) {
+                RecordingService.stop(context)
+            }
             return
         }
-        ProjectionHolder.updateState(RecordingState.REQUESTING_CONSENT)
+        if (!RecorderController.tryTransitionSync(RecordingState.REQUESTING_CONSENT)) {
+            return
+        }
         val mgr = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val intent = mgr.createScreenCaptureIntent()
-        launcher.launch(intent)
+        launcher.launch(mgr.createScreenCaptureIntent())
     }
 
     fun stopSession(context: Context) {
-        RecordingService.stop(context)
+        val result = RecorderController.requestStop()
+        when (result) {
+            RecorderController.StopRequestResult.STOPPING,
+            RecorderController.StopRequestResult.ALREADY_STOPPING -> {
+                RecordingService.stop(context)
+            }
+            RecorderController.StopRequestResult.CANCELLED_CONSENT -> { }
+            else -> {
+                RecordingService.stop(context)
+            }
+        }
     }
 }
