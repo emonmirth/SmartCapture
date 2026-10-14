@@ -40,30 +40,34 @@ import com.eonmirth.smartcapture.ui.library.LibraryScreen
 import com.eonmirth.smartcapture.ui.settings.SettingsScreen
 import com.eonmirth.smartcapture.ui.theme.SmartCaptureTheme
 
-/** Provides the screen-capture consent launcher to Compose. */
 val LocalConsentLauncher = compositionLocalOf<ActivityResultLauncher<Intent>?> { null }
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var consentLauncher: ActivityResultLauncher<Intent>
-    private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
+    private lateinit var permissionLauncher: ActivityResultLauncher<String>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         consentLauncher = ConsentHelper.createLauncher(this) { }
 
-        notificationPermissionLauncher = registerForActivityResult(
+        permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { }
 
         if (Build.VERSION.SDK_INT >= 33) {
-            val granted = ContextCompat.checkSelfPermission(
-                this, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
 
         enableEdgeToEdge()
@@ -106,9 +110,7 @@ fun SmartCaptureAppScaffold() {
                         selected = selected,
                         onClick = {
                             navController.navigate(dest.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
